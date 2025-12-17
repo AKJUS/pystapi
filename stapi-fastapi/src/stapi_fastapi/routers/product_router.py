@@ -5,7 +5,6 @@ import traceback
 from typing import TYPE_CHECKING, Any
 
 from fastapi import (
-    APIRouter,
     Depends,
     Header,
     HTTPException,
@@ -38,6 +37,7 @@ from stapi_fastapi.constants import TYPE_JSON
 from stapi_fastapi.errors import NotFoundError, QueryablesError
 from stapi_fastapi.models.product import Product
 from stapi_fastapi.responses import GeoJSONResponse
+from stapi_fastapi.routers.base import StapiFastapiBaseRouter
 from stapi_fastapi.routers.route_names import (
     CONFORMANCE,
     CREATE_ORDER,
@@ -47,6 +47,7 @@ from stapi_fastapi.routers.route_names import (
     GET_QUERYABLES,
     SEARCH_OPPORTUNITIES,
 )
+from stapi_fastapi.routers.utils import json_link
 
 if TYPE_CHECKING:
     from stapi_fastapi.routers import RootRouter
@@ -84,7 +85,7 @@ def build_conformances(product: Product, root_router: RootRouter) -> list[str]:
     return list(conformances)
 
 
-class ProductRouter(APIRouter):
+class ProductRouter(StapiFastapiBaseRouter):
     # FIXME ruff is complaining that the init is too complex
     def __init__(  # noqa
         self,
@@ -199,31 +200,16 @@ class ProductRouter(APIRouter):
                 tags=["Products"],
             )
 
-    @staticmethod
-    def url_for(request: Request, name: str, /, **path_params: Any) -> str:
-        return str(request.url_for(name, **path_params))
-
     def get_product(self, request: Request) -> ProductPydantic:
         links = [
-            Link(
-                href=self.url_for(request, f"{self.root_router.name}:{self.product.id}:{GET_PRODUCT}"),
-                rel="self",
-                type=TYPE_JSON,
+            json_link("self", self.url_for(request, f"{self.root_router.name}:{self.product.id}:{GET_PRODUCT}")),
+            json_link("conformance", self.url_for(request, f"{self.root_router.name}:{self.product.id}:{CONFORMANCE}")),
+            json_link(
+                "queryables", self.url_for(request, f"{self.root_router.name}:{self.product.id}:{GET_QUERYABLES}")
             ),
-            Link(
-                href=self.url_for(request, f"{self.root_router.name}:{self.product.id}:{CONFORMANCE}"),
-                rel="conformance",
-                type=TYPE_JSON,
-            ),
-            Link(
-                href=self.url_for(request, f"{self.root_router.name}:{self.product.id}:{GET_QUERYABLES}"),
-                rel="queryables",
-                type=TYPE_JSON,
-            ),
-            Link(
-                href=self.url_for(request, f"{self.root_router.name}:{self.product.id}:{GET_ORDER_PARAMETERS}"),
-                rel="order-parameters",
-                type=TYPE_JSON,
+            json_link(
+                "order-parameters",
+                self.url_for(request, f"{self.root_router.name}:{self.product.id}:{GET_ORDER_PARAMETERS}"),
             ),
             Link(
                 href=self.url_for(request, f"{self.root_router.name}:{self.product.id}:{CREATE_ORDER}"),
@@ -237,10 +223,9 @@ class ProductRouter(APIRouter):
             self.product.supports_async_opportunity_search and self.root_router.supports_async_opportunity_search
         ):
             links.append(
-                Link(
-                    href=self.url_for(request, f"{self.root_router.name}:{self.product.id}:{SEARCH_OPPORTUNITIES}"),
-                    rel="opportunities",
-                    type=TYPE_JSON,
+                json_link(
+                    "opportunities",
+                    self.url_for(request, f"{self.root_router.name}:{self.product.id}:{SEARCH_OPPORTUNITIES}"),
                 ),
             )
 
@@ -411,7 +396,7 @@ class ProductRouter(APIRouter):
         body = opp_req.body()
         body["next"] = pagination_token
         return Link(
-            href=str(request.url),
+            href=request.url,
             rel="next",
             type=TYPE_JSON,
             method="POST",
@@ -431,14 +416,13 @@ class ProductRouter(APIRouter):
         ):
             case Success(Some(opportunity_collection)):
                 opportunity_collection.links.append(
-                    Link(
-                        href=self.url_for(
+                    json_link(
+                        "self",
+                        self.url_for(
                             request,
                             f"{self.root_router.name}:{self.product.id}:{GET_OPPORTUNITY_COLLECTION}",
                             opportunity_collection_id=opportunity_collection_id,
                         ),
-                        rel="self",
-                        type=TYPE_JSON,
                     ),
                 )
                 return opportunity_collection  # type: ignore
